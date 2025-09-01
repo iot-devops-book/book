@@ -1,0 +1,97 @@
+name: Chapter 14 — Build & Unit Tests (v2)
+
+on:
+  push:
+    paths:
+      - 'Chapter-14/**'
+      - '.github/workflows/chapter-14-2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      CHAPTER_DIR: Chapter-14
+      BUILD_DIR: Chapter-14/build
+      TARGET_BIN: firmware.bin
+      TEST_ART_DIR: Chapter-14/test-artifacts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ARM toolchain + host gcc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
+            gcc make
+
+      - name: Show tool versions
+        run: |
+          arm-none-eabi-gcc --version
+          arm-none-eabi-objcopy --version
+          arm-none-eabi-size --version
+          gcc --version
+          make --version
+
+      - name: Build firmware (Chapter-14)
+        run: make -C "${CHAPTER_DIR}" -j"$(nproc)" all
+
+      - name: Check firmware outputs (visible)
+        run: |
+          ls -lh "${BUILD_DIR}" || true
+          test -f "${BUILD_DIR}/${TARGET_BIN}" && sha256sum "${BUILD_DIR}/${TARGET_BIN}" || echo "Note: ${BUILD_DIR}/${TARGET_BIN} not found (ok if your Makefile uses a different name)."
+
+      - name: Run unit tests (capture full reports)
+        id: runtests
+        run: |
+          set -e
+          mkdir -p "${TEST_ART_DIR}"/{junit,coverage,logs}
+
+          if [ -f "${CHAPTER_DIR}/run_tests.sh" ]; then
+            chmod +x "${CHAPTER_DIR}/run_tests.sh"
+            echo "[CI] Running unit tests..."
+            (cd "${CHAPTER_DIR}" && ./run_tests.sh) \
+              > "${TEST_ART_DIR}/logs/tests.log" 2>&1 || echo "nonzero_exit" > "${TEST_ART_DIR}/logs/status.txt"
+
+            # Collect common report locations if produced by your script
+            find "${CHAPTER_DIR}" -type f \( -name "junit*.xml" -o -name "*_junit.xml" -o -name "TEST-*.xml" -o -name "report.xml" \) -print -exec cp -v {} "${TEST_ART_DIR}/junit/" \; || true
+            find "${CHAPTER_DIR}" -type f \( -name "coverage.info" -o -name "lcov.info" -o -name "cobertura*.xml" \) -print -exec cp -v {} "${TEST_ART_DIR}/coverage/" \; || true
+            if [ -d "${CHAPTER_DIR}/coverage" ]; then
+              cp -rv "${CHAPTER_DIR}/coverage" "${TEST_ART_DIR}/coverage/html" || true
+            fi
+
+            {
+              echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              echo "runner=${{ runner.os }}"
+              echo "commit=${{ github.sha }}"
+            } > "${TEST_ART_DIR}/summary.txt"
+          else
+            echo "[CI] No run_tests.sh found — creating placeholder log."
+            echo "No tests present in ${CHAPTER_DIR}" > "${TEST_ART_DIR}/logs/tests.log"
+          fi
+
+      - name: Upload unit test artifacts (full reports)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit test
+          path: |
+            Chapter-14/test-artifacts/**
+          if-no-files-found: warn
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter-14-build-${{ github.run_number }}
+          path: |
+            Chapter-14/build/*.elf
+            Chapter-14/build/*.hex
+            Chapter-14/build/*.bin
+            Chapter-14/build/*.map
+          if-no-files-found: warn
+

@@ -1,0 +1,8 @@
+ data
+model = LinearRegression()
+model.fit(hours.reshape(-1, 1), sensor_readings)
+
+# Predict sensor reading at 600 hours
+predicted_reading = model.predict([[600]])
+print(f"Predicted sensor reading at 600 hours: {predicted_reading[0]}")
+

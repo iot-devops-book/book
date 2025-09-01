@@ -1,0 +1,22 @@
+# GitHub Actions example for automating firmware deployment to a microcontroller
+name: Deploy Firmware
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Simulate flashing firmware
+        run: |
+          echo "Starting firmware deployment..."
+          sleep 1
+          echo "Erasing device (simulated)..."
+          sleep 1
+          echo "Writing firmware.bin (simulated)..."
+
