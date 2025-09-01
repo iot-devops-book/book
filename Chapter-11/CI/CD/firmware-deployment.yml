@@ -1,0 +1,81 @@
+name: Firmware Deployment
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create OTA package
+        run: |
+          echo "Creating OTA package..."
+          tar czf ota-package.tar.gz firmware.bin
+
+      - name: Upload OTA package as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ota-package
+          path: ota-package.tar.gz
+
+  sign:
+    runs-on: ubuntu-latest
+    needs: package
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download OTA package
+        uses: actions/download-artifact@v3
+        with:
+          name: ota-package
+          path: ./ota-package
+
+      - name: Sign firmware
+        run: |
+          echo "Signing firmware..."
+          openssl dgst -sha256 -sign private_key.pem -out signature.bin ./ota-package/ota-package.tar.gz
+          cat ./ota-package/ota-package.tar.gz signature.bin > firmware_signed.bin
+
+      - name: Upload signed firmware as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: signed-firmware
+          path: firmware_signed.bin
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: sign
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download signed firmware
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-firmware
+          path: ./signed-firmware
+
+      - name: Install AWS CLI
+        run: |
+          pip install awscli
+
+      - name: Upload to S3
+        run: |
+          echo "Uploading to S3..."
+          aws s3 cp ./signed-firmware/firmware_signed.bin s3://embedded-firmware-releases/${GITHUB_REF##*/}/
+
+      - name: Trigger OTA job
+        run: |
+          echo "Triggering OTA job..."
+          curl -X POST https://ota.example.com/api/v1/deploy \
+               -H "Authorization: Bearer ${{ secrets.OTA_TOKEN }}" \
+               -F "firmware=@./signed-firmware/firmware_signed.bin"

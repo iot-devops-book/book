@@ -1,0 +1,45 @@
+:project:
+  :name: MyEmbeddedProject
+
+:release_build:
+  :use_cexception: TRUE
+
+:paths:
+  :test:
+    - +:test/**
+  :source:
+    - src/**
+  :include:
+    - src
+    - include
+
+:plugins:
+  :enabled:
+    - cmock
+
+:cmock:
+  :mock_prefix: mock_
+  :treat_as:
+    - temperature
+With Ceedling installed, simply run:
+ceedling test:all
+
+#Ceedling generates mocks, compiles tests, runs Unity, and prints a summary:
+
+Test temperature.c
+------------------
+[timestamp] TEST PASS: test_celsius_to_fahrenheit_positive
+[timestamp] TEST PASS: test_read_temperature_adc
+------------------
+2 Tests, 0 Failures, 0 Errors
+Integrating into CI is trivial:
+script:
+  - gem install ceedling
+  - ceedling test:all
+artifacts:
+  when: always
+  paths:
+    - build/artifacts/*.xml
+
+
+

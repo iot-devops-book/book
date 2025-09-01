@@ -1,0 +1,32 @@
+name: OTA Firmware Upload
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ota:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build Firmware
+        run: make all
+
+      - name: Sign
+        run: |
+          openssl dgst -sha256 -sign ${{ secrets.PRIV_KEY }} \
+            -out fw.sig build/firmware.bin
+          cat build/firmware.bin fw.sig > build/fw_signed.bin
+
+      - name: Upload OTA
+        uses: jakejarvis/s3-sync-action@v0.5.1
+        with:
+          args: build/fw_signed.bin s3://my-firmware-bucket/${{ github.ref }}
+          aws-access-key-id: ${{ secrets.AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET }}

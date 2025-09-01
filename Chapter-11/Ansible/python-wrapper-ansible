@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import subprocess
+import yaml
+import argparse
+
+def load_inventory(path='inventory.yml'):
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+def run_playbook(playbook, hosts_group):
+    cmd = [
+        'ansible-playbook',
+        playbook,
+        '-i', 'inventory.yml',
+        '--limit', hosts_group
+    ]
+    print(f"Running: {' '.join(cmd)}")
+    subprocess.check_call(cmd)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Provision Embedded Test Environment')
+    parser.add_argument('--group', default='stm32-rack', help='Host group to provision')
+    parser.add_argument('--playbook', default='provision.yml', help='Ansible playbook')
+    args = parser.parse_args()
+
+    inventory = load_inventory()
+    if args.group not in inventory:
+        raise ValueError(f"Unknown host group: {args.group}")
+
+    run_playbook(args.playbook, args.group)

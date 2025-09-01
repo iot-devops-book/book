@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+    environment {
+        TOOLCHAIN = 'gcc-arm-none-eabi-10'
+        BUILD_DIR = "${WORKSPACE}/build"
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://git.example.com/my-embedded-project.git'
+            }
+        }
+        stage('Setup Toolchain') {
+            steps {
+                sh '''
+                   echo "Installing toolchain: $TOOLCHAIN"
+                   sudo apt-get update && sudo apt-get install -y $TOOLCHAIN
+                '''
+            }
+        }
+        stage('Build') {
+            steps {
+                sh '''
+                   mkdir -p ${BUILD_DIR}
+                   cd ${BUILD_DIR}
+                   cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-arm.cmake ..
+                   make -j$(nproc)
+                '''
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'build/**/*.elf, build/**/*.bin', fingerprint: true
+                }
+                failure {
+                    mail to: 'dev-team@example.com',
+                         subject: "Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                         body: "Check console output at ${env.BUILD_URL}"
+                }
+            }
+        }
+        stage('Unit Tests') {
+            steps {
+                sh '''
+                   cd ${BUILD_DIR}
+                   make test
+                '''
+            }
+            post {
+                always {
+                    junit 'build/test-results/*.xml'
+                }
+            }
+        }
+        stage('Flash & Integration') {
+            parallel {
+                stage('Hardware A') {
+                    steps {
+                        sh '''
+                           cd ${BUILD_DIR}
+                           openocd -f interface/stlink.cfg -f target/stm32f4.cfg \
+                                 -c "program firmware.bin verify reset exit"
+                           pytest ../tests/integration/test_uart.py --device /dev/ttyUSB0
+                        '''
+                    }
+                }
+                stage('Hardware B') {
+                    steps {
+                        sh '''
+                           cd ${BUILD_DIR}
+                           openocd -f interface/jlink.cfg -f target/nxp-lpc.cfg \
+                                 -c "program firmware.bin verify reset exit"
+                           pytest ../tests/integration/test_can.py --device can0
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
