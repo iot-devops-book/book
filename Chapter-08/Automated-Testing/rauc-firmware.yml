@@ -1,0 +1,119 @@
+name: RAUC Firmware CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  RAUC_COMPATIBLE: imx8m
+
+jobs:
+  build:
+    name: Build RAUC Bundle
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_NAME: update-${{ github.sha }}.raucb
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl git make gcc rauc openssh-client
+
+      - name: Setup directories and keys
+        run: |
+          mkdir -p rauc_out build
+          echo "${{ secrets.RAUC_CERT_PEM }}" > rauc_out/cert.pem
+          echo "${{ secrets.RAUC_KEY_PEM }}" > rauc_out/key.pem
+          chmod 600 rauc_out/key.pem
+
+      - name: Build firmware
+        run: |
+          make firmware
+          test -f build/rootfs.img
+
+      - name: Create RAUC Bundle
+        run: |
+          cp rauc/manifest.raucm rauc_out/manifest.raucm
+          sed -i "s/^compatible=.*/compatible=${RAUC_COMPATIBLE}/" rauc_out/manifest.raucm
+          cp build/rootfs.img rauc_out/rootfs.img
+          rauc bundle \
+            --cert rauc_out/cert.pem \
+            --key  rauc_out/key.pem \
+            rauc_out/manifest.raucm "rauc_out/${BUNDLE_NAME}"
+
+      - name: Upload RAUC Bundle Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: rauc-bundle
+          path: rauc_out/update-*.raucb
+
+  test:
+    name: Test RAUC Bundle
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      RAUC_COMPATIBLE: imx8m
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl git make gcc rauc openssh-client
+
+      - name: Download RAUC Bundle Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: rauc-bundle
+          path: rauc_out
+
+      - name: Run Tests
+        run: |
+          make test
+          BUNDLE_FILE=$(ls rauc_out/update-*.raucb)
+          rauc info "$BUNDLE_FILE" || { echo "Invalid RAUC bundle"; exit 1; }
+          rauc verify --keyring rauc_out/cert.pem "$BUNDLE_FILE"
+          rauc info "$BUNDLE_FILE" | grep -q "compatible: ${RAUC_COMPATIBLE}"
+
+  deploy:
+    name: Deploy to Embedded Device
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl git make gcc rauc openssh-client
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo "Host *\n  StrictHostKeyChecking no\n" > ~/.ssh/config
+
+      - name: Download RAUC Bundle Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: rauc-bundle
+          path: rauc_out
+
+      - name: Deploy to Device via SSH
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEVICE_IP: ${{ secrets.DEVICE_IP }}
+        run: |
+          BUNDLE_FILE=$(ls rauc_out/update-*.raucb)
+          scp "$BUNDLE_FILE" ${SSH_USER}@${DEVICE_IP}:/tmp/
+          ssh ${SSH_USER}@${DEVICE_IP} "rauc install /tmp/$(basename $BUNDLE_FILE)"
+          ssh ${SSH_USER}@${DEVICE_IP} "rauc status"
+          ssh ${SSH_USER}@${DEVICE_IP} "reboot || systemctl reboot"

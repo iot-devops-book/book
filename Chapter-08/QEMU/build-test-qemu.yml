@@ -1,0 +1,27 @@
+name: Build and Test Firmware
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm make
+
+      - name: Build firmware
+        run: make all
+
+      - name: Test firmware with QEMU
+        run: |
+          qemu-system-arm -M virt -m 128M -nographic -kernel firmware.elf

@@ -1,0 +1,18 @@
+name: IoT Edge Device CI/CD Pipeline
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build firmware
+        run: make firmware
+      - name: Run tests
+        run: make test
+      - name: Deploy to Edge Device
+        run: ssh user@edge_device 'sudo reboot' # This deploys the firmware to the device
