@@ -1,0 +1,26 @@
+pipeline {
+    agent any
+    stages {
+        stage('Build') {
+            steps {
+                sh 'make'
+            }
+        }
+        stage('Static Code Analysis') {
+            steps {
+                sh 'sonar-scanner'
+            }
+        }
+        stage('Unit Tests') {
+            steps {
+                sh './run_tests.sh'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh './deploy.sh'
+            }
+        }
+    }
+}
+

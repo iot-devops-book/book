@@ -1,0 +1,25 @@
+pipeline {
+    agent any
+    stages {
+        stage('Build') {
+            steps {
+                sh 'make'
+            }
+        }
+        stage('Static Code Analysis for Safety') {
+            steps {
+                sh 'sonar-scanner -Dsonar.projectKey=automotive-system -Dsonar.sources=src/ -Dsonar.language=c'
+            }
+        }
+        stage('Unit Tests') {
+            steps {
+                sh './run_safety_tests.sh'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh './deploy.sh'
+            }
+        }
+    }
+}
