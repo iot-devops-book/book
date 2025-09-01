@@ -1,0 +1,62 @@
+name: Build & Push RPi Image
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-rpi-image:
+    runs-on: ubuntu-latest
+
+    # Adjust these to match your registry/repo naming
+    env:
+      PLATFORM: linux/arm/v7
+      IMAGE_TAG: rpi-latest
+      # OPTION A: push to GitHub Container Registry (ghcr.io)
+      # REGISTRY: ghcr.io
+      # IMAGE_NAME: ${{ github.repository }}   # e.g. owner/repo
+      #
+      # OPTION B: push to GitLab Container Registry (same as your GitLab CI)
+      # set REGISTRY to "registry.gitlab.com" and IMAGE_NAME to "group/project"
+      REGISTRY: registry.gitlab.com
+      IMAGE_NAME: iot-devops-book/book
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # QEMU replaces your binfmt/qemu-user-static setup
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Buildx replaces your buildx create/inspect/bootstrap
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login to your registry
+      # For GHCR: use secrets GHCR_TOKEN (a classic PAT with "write:packages") and REGISTRY=ghcr.io
+      # For GitLab registry: create a deploy token or PAT; set REGISTRY_USERNAME / REGISTRY_PASSWORD
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      # Build & push (equivalent to: docker buildx build --platform linux/arm/v7 -t $IMAGE_TAG --push .)
+      - name: Build and push (arm/v7)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ env.PLATFORM }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
