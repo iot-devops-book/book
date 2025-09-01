@@ -1,0 +1,8 @@
+# For basic system info and scripting
+psutil
+# For working with Raspberry Pi GPIO
+RPi.GPIO
+# For reading CPU temperature (optional script)
+gpiozero
+# For creating simple web apps or APIs (optional)
+flask
