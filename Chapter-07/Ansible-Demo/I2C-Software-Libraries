@@ -1,0 +1,21 @@
+---
+- name: Configure I2C for Sensor on Embedded Device
+  hosts: embedded_devices
+  tasks:
+    - name: Install the I2C library
+      package:
+        name: "python3-smbus"
+        state: present
+
+    - name: Enable I2C interface on the system
+      command: "raspi-config nonint do_i2c 0"
+      when: ansible_facts['distribution'] == "Raspbian"
+
+    - name: Verify I2C interface is enabled
+      command: "i2cdetect -y 1"
+      register: i2c_detect
+      changed_when: False
+
+    - name: Display I2C detection result
+      debug:
+        var: i2c_detect.stdout
