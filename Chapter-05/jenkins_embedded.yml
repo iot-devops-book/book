@@ -1,0 +1,74 @@
+name: CI (Firmware)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      BUILD_DIR: build
+      TARGET: firmware.elf
+      CROSS_COMPILER: arm-none-eabi-gcc
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Jenkins env ke barabar: toolchain + build tools install
+      - name: Install dependencies (ARM GCC, CMake, cppcheck, make)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
+            cmake make cppcheck
+
+      - name: Setup build directory
+        run: mkdir -p "${BUILD_DIR}"
+
+      - name: Configure (CMake)
+        working-directory: ${{ env.BUILD_DIR }}
+        run: cmake .. -DCMAKE_TOOLCHAIN_FILE=../toolchain-arm.cmake
+
+      - name: Build (Make)
+        working-directory: ${{ env.BUILD_DIR }}
+        run: make -j
+
+      # Jenkins me "|| true" tha taa-ke analysis failures se build na toote
+      - name: Static Analysis (cppcheck, non-blocking)
+        continue-on-error: true
+        run: |
+          cppcheck --enable=all --inconclusive --quiet .
+
+      - name: Unit Tests
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          chmod +x ./run_tests || true
+          ./run_tests
+
+      - name: Archive firmware artifact
+        if: always()   # Jenkins ke 'archiveArtifacts' jaisa; failure pe bhi upload koshish
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: ${{ env.BUILD_DIR }}/${{ env.TARGET }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Post-Build Cleanup
+        if: always()
+        run: rm -rf "${BUILD_DIR}"
+
+      - name: Always message
+        if: always()
+        run: echo "Pipeline finished."
+
+      - name: Failure message
+        if: failure()
+        run: echo "Build failed!"
