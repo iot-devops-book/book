@@ -1,0 +1,7 @@
+- name: Download firmware
+  get_url:
+    url: "http://example.com/firmware-v2.0.bin"
+    dest: "/tmp/firmware-v2.0.bin"
+
+- name: Install firmware
+  command: "/bin/flash-firmware /tmp/firmware-v2.0.bin"

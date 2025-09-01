@@ -1,0 +1,73 @@
+pipeline {
+    agent any
+    
+    stages {
+        
+        stage('Checkout Code') {
+            steps {
+                // Pull the latest motor control algorithm source code
+                git branch: 'main', url: 'https://github.com/example/motor-control.git'
+            }
+        }
+        
+        stage('Build Simulink Model') {
+            steps {
+                // Use MATLAB command line to build the Simulink model for HIL
+                sh '''
+                matlab -batch "open('motor_control.slx'); \
+                               set_param('motor_control', 'SimulationCommand', 'update'); \
+                               rtwbuild('motor_control')"
+                '''
+            }
+        }
+        
+        stage('Deploy to HIL Simulator') {
+            steps {
+                // Transfer generated code to the dSPACE simulator
+                sh 'scp build/motor_control.elf hil_user@hil_simulator:/home/hil_user/tests/'
+                // Trigger HIL system to load the model
+                sh 'ssh hil_user@hil_simulator "load_model /home/hil_user/tests/motor_control.elf"'
+            }
+        }
+        
+        stage('Run HIL Tests') {
+            steps {
+                // Run automated test scripts that provide simulated sensor data and collect outputs
+                sh 'ssh hil_user@hil_simulator "run_hil_test --config motor_test_config.json --output results.json"'
+            }
+        }
+        
+        stage('Collect and Analyze Results') {
+            steps {
+                // Copy test results back to Jenkins for analysis
+                sh 'scp hil_user@hil_simulator:/home/hil_user/tests/results.json ./'
+                
+                // Analyze results using MATLAB or Python
+                sh '''
+                python3 analyze_results.py results.json expected_results.json || exit 1
+                '''
+            }
+        }
+        
+        stage('Generate Report') {
+            steps {
+                // Create a test report (HTML or PDF)
+                sh 'python3 generate_report.py results.json report.html'
+                publishHTML(target: [allowMissing: false, keepAll: true, reportDir: '.', reportFiles: 'report.html', reportName: 'HIL Test Report'])
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Archive results for traceability
+            archiveArtifacts artifacts: '*.json, *.html', fingerprint: true
+        }
+        failure {
+            // Send notification if HIL tests fail
+            mail to: 'dev-team@example.com',
+                 subject: "HIL Test Failed for ${env.BUILD_TAG}",
+                 body: "Check Jenkins for the test report."
+        }
+    }
+}

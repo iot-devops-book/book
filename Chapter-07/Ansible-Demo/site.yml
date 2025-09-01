@@ -1,0 +1,16 @@
+cat > site.yml <<'YAML'
+- name: Configure web servers
+  hosts: web
+  become: true
+  tasks:
+    - name: Ensure nginx is installed
+      package:
+        name: nginx
+        state: present
+
+    - name: Ensure nginx is running and enabled
+      service:
+        name: nginx
+        state: started
+        enabled: true
+YAML
