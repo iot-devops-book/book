@@ -1,0 +1,28 @@
+# Example Kubernetes Deployment for a distributed embedded system
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-device-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: edge-device
+  template:
+    metadata:
+      labels:
+        app: edge-device
+    spec:
+      containers:
+      - name: edge-device-container
+        image: edge-device-image:v1
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - mountPath: /data
+          name: device-config
+      volumes:
+      - name: device-config
+        configMap:
+          name: device-config
+

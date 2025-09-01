@@ -1,0 +1,20 @@
+import os
+import subprocess
+
+def run_tests(test_suite):
+    # Run automated test suite
+    command = f"python3 {test_suite}.py"
+    subprocess.run(command, shell=True)
+
+def build_firmware():
+    # Automate the firmware build process
+    os.system("make build")
+
+# Continuous integration workflow
+def continuous_integration():
+    build_firmware()
+    run_tests("unit_tests")
+    run_tests("integration_tests")
+
+# Trigger CI process
+continuous_integration()
